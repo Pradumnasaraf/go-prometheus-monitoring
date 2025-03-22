@@ -8,6 +8,8 @@ We will containerize the Golang application and connect it to Prometheus and Gra
 - `/metrics` - Exposes the Prometheus metrics.
 - `/health` - Returns the health status of the application.
 
+<img width="1512" alt="grafana-panel" src="https://github.com/user-attachments/assets/2d6edc7b-14ab-4c27-ba6f-fd0e11dae554" />
+
 ## Project Structure
 
 ```text

@@ -1,110 +1,151 @@
-## 🎯 A Template for building Docker Guides' Samples Apps
+# Go Prometheus Monitoring
 
-1. [Sample README Content](#sample-readme-content)
-   - [Project Title](#project-title)
-   - [Project Structure](#project-structure)
-   - [Setup Instructions](#setup-instructions)
-   - [Configuration](#configuration)  
-2. [Backlinks](#backlinks)
-3. [Maintenance Schedule](#maintenance-schedule)
-4. [License](#license)
-5. [Contributing](#contributing)
+This repo contains a simple Golang application that exposes a few endpoints to demonstrate how to monitor a Golang application using Prometheus and Grafana. 
 
+We will containerize the Golang application and connect it to Prometheus and Grafana using Docker Compose. We will also create a simple Grafana dashboard to visualize the metrics collected by Prometheus. The Golang application is built using the Gin web framework and exposes the following endpoints:
 
-This page outlines the requirements for code repositories in the `dockersamples` organization. These repositories are meant to support Docker guides and blogs at this point.
-
-If you have any questions, please contact `#docs` on the [Docker Community Slack](https://communityinviter.com/apps/dockercommunity/docker-community).
-
-### PLEASE REMOVE THIS SECTION ONCE YOU CLONE THIS REPO
-
-This section provides instructions for using the template. Please remove this "Samples Repo Templates for Docker Guides" section from the README file after cloning the repository to ensure your guide is clean and tailored to your specific application.
-
-### For a new repository
-
-
-1. Select **Use this template** and choose **Create a new repository**.
-
-<img width="1144" alt="image" src="https://github.com/user-attachments/assets/d27634f1-1f7e-4e77-bc60-25122467e805">
-
----
-
-
-2. Select **dockersamples/docker-guides-template** under Repository Template, select your repository, populate description and choose your preferred repository name.
-
-<img width="725" alt="image" src="https://github.com/user-attachments/assets/8fbc6a38-f6ab-4442-b0ad-51ad01794016">
-
----
-
-3. Select **Create repository**. Don't forget to populate **About** section with a short description of the project once you create the repository.
-
-### For an existing repository
-
-If you already have an existing repository, copy the appropriate files from this repo into your own. The key files are `CONTRIBUTING.md`, `LICENSE`, and `README.md`
-
-
-## Sample README Content
-
-The README.md describes the purpose of the repository, setup instructions, and related resources. 
-
-## Project Title
-
-This repo contains the sample application for developing applications and the Docker guide on Docker Docs. While this project is written primarily in Node/Rust/Java, the focus is on launching and using tool in development and the tool-related pieces can easily be adapted into any other language.
-
-Notice: This sample repo is intended to support the guide mentioned above. As such, the application code is purposely kept simple to keep the focus on the guide's content and should not be considered production-ready.
+- `/v1/users` - Returns a simple JSON response.
+- `/metrics` - Exposes the Prometheus metrics.
+- `/health` - Returns the health status of the application.
 
 ## Project Structure
-[Describe the directory structure of the project repository]
 
-- **app/** - The main "app" of the project. It listens to events on a Kafka topic and logs them.
-- **frontend/** - Contains the frontend part of the application.
-- **backend/** - Contains the backend part of the application.
-- **database/** - Contains database configuration and scripts.
+```text
+go-prometheus-monitoring
+├── CONTRIBUTING.md
+├── Docker
+│   ├── grafana.yml
+│   └── prometheus.yml
+├── Dockerfile
+├── LICENSE
+├── README.md
+├── compose.yaml
+├── go.mod
+├── go.sum
+└── main.go
+```
+
+- **main.go** - The entry point of the application.
+- 
+- **go.mod and go.sum** - Go module files.
+- **Dockerfile** - Dockerfile used to build the app.
+- **Docker/** - Contains the Docker Compose configuration files for Grafana and Prometheus.
+- **compose.yaml** - Compose file to launch everything (Golang app, Prometheus, and Grafana).
+- **dashboard.json** - Grafana dashboard configuration file.
+- **Dockerfile** - Dockerfile used to build the Golang app.
+- **compose.yaml** - Docker Compose file to launch everything (Golang app, Prometheus, and Grafana).
+- Other files are for licensing and documentation purposes.
 
 ## Setup Instructions
 
-[Provide clear setup instructions here]
+### Running with Docker Compose
 
+To run the application, you need to have Docker and Docker Compose installed on your machine. You can install Docker and Docker Compose by following the instructions in the official documentation:
 
-### 1. Clone the repository
+To run the the server using Docker Compose, you'll need to create a Dockerfile for the server. Below is the [Dockerfile](Dockerfile) for the our server:
 
- ```bash
-   git clone https://github.com/your-org/sample-repo.git
- ```
+```Dockerfile
+# Use the official Golang image as the base
+FROM golang:1.24-alpine AS builder
 
+# Set environment variables
+ENV CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=amd64
 
-### 2. Navigate to the project directory:
+# Set working directory inside the container
+WORKDIR /build
 
+# Copy go.mod and go.sum files for dependency installation
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy the entire application source
+COPY . .
+
+# Build the Go binary
+RUN go build -o /app .
+
+# Final lightweight stage
+FROM alpine:3.17 AS final
+
+# Copy the compiled binary from the builder stage
+COPY --from=builder /app /bin/app
+
+# Expose the application's port
+EXPOSE 8000
+
+# Run the application
+CMD ["bin/app"]
 ```
-cd sample-repo
+
+Now, to run the application with all the services, you can use the following Docker Compose file:
+
+```yaml
+services:
+  api:
+    container_name: go-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: go-api:latest
+    ports:
+      - 8000:8000
+    networks:
+      - go-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    develop:
+      watch:
+        - path: .
+          action: rebuild
+      
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v2.55.0
+    volumes:
+      - ./Docker/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - 9090:9090
+    networks:
+      - go-network
+  
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:11.3.0
+    volumes:
+      - ./Docker/grafana.yml:/etc/grafana/provisioning/datasources/datasource.yaml
+      - grafana-data:/var/lib/grafana
+    ports:
+      - 3000:3000
+    networks:
+      - go-network
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=password
+
+volumes:
+  grafana-data:
+
+networks:
+  go-network:
+    driver: bridge
 ```
 
-## Configuration
-This project requires the following environment variables:
-- `DATABASE_URL` - The URL of the database.
-- `API_KEY` - API key for third-party services.
+To build and run the Docker image using Docker Compose, use the following command:
 
-Create a `.env` file in the root directory to define these variables.
-
-### 3. Install dependencies for the app, frontend, and backend:
-
+```bash
+docker-compose up --build
 ```
-cd app && npm install
-cd ../frontend && npm install
-cd ../backend && npm install
-```
-
-### 4. Start the application:
-
-```
-npm start
-```
-
 
 ## Backlinks
-For more information, check the related [blog post](link) or [use case guide](https://docs.docker.com/guides/use-case/kafka/).
+For more information, check the related [use case guide](https://docs.docker.com/guides/go-promethus-monitoring).
 
-## Maintenance Schedule
-This repo is maintained [frequency]. For any security updates, note that there may be delays in applying recent fixes.
 
 ## License
 This project is licensed under the [Apache 2.0 License](/LICENSE).

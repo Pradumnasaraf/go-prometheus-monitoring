@@ -34,7 +34,7 @@ func main() {
 
 	// Register /metrics before middleware
 	router.GET("/metrics", PrometheusHandler())
-	
+
 	router.Use(RequestMetricsMiddleware())
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
